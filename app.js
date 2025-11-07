@@ -4,6 +4,10 @@ const AppState = {
         stream: null,
         isActive: false
     },
+    permissions: {
+        camera: false,
+        location: false
+    },
     capture: {
         imageData: null,
         blob: null,
@@ -81,6 +85,102 @@ function hideError() {
     Elements.errorModal.classList.remove('active');
 }
 
+// ==================== Permission Management ====================
+async function requestPermissions() {
+    try {
+        updateCameraStatus('Requesting permissions...', 'loading');
+
+        // Check if we're on HTTPS or localhost
+        const isSecureContext = window.isSecureContext;
+        if (!isSecureContext) {
+            throw new Error('This app requires HTTPS to access camera and location.');
+        }
+
+        // Request both camera and location permissions together
+        const permissionPromises = [];
+
+        // 1. Request Camera Permission
+        const cameraPromise = (async () => {
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                AppState.permissions.camera = true;
+                return stream;
+            } catch (error) {
+                console.error('Camera permission error:', error);
+                throw error;
+            }
+        })();
+
+        permissionPromises.push(cameraPromise);
+
+        // 2. Request Location Permission (pre-request)
+        const locationPromise = (async () => {
+            try {
+                if (!navigator.geolocation) {
+                    throw new Error('Geolocation not supported');
+                }
+
+                // Request location permission upfront
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(
+                        resolve,
+                        reject,
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 15000,
+                            maximumAge: 0
+                        }
+                    );
+                });
+
+                AppState.permissions.location = true;
+                return position;
+            } catch (error) {
+                console.error('Location permission error:', error);
+                // Don't throw - location is optional
+                return null;
+            }
+        })();
+
+        permissionPromises.push(locationPromise);
+
+        // Wait for both permissions
+        const [cameraStream, locationResult] = await Promise.all(permissionPromises);
+
+        return { cameraStream, locationResult };
+
+    } catch (error) {
+        console.error('Permission request error:', error);
+
+        let errorMsg = '';
+        let errorTitle = 'Permission Required';
+
+        if (error.message.includes('HTTPS')) {
+            errorTitle = 'Insecure Connection';
+            errorMsg = 'This app must be accessed via HTTPS. Please use your Vercel deployment URL (https://...) instead of HTTP.';
+        } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            errorMsg = 'Camera access was denied. Please enable camera permissions in your browser settings and reload the page.';
+        } else if (error.name === 'NotFoundError') {
+            errorMsg = 'No camera found on this device. Please ensure your device has a camera.';
+        } else if (error.name === 'NotReadableError') {
+            errorMsg = 'Camera is already in use by another application. Please close other apps and try again.';
+        } else {
+            errorMsg = `Unable to access required permissions: ${error.message}. Please check your browser settings.`;
+        }
+
+        showError(errorTitle, errorMsg);
+        throw error;
+    }
+}
+
 // ==================== Camera Management ====================
 function updateCameraStatus(text, state = 'loading') {
     const statusIndicator = Elements.cameraStatus.querySelector('.status-indicator');
@@ -92,24 +192,30 @@ function updateCameraStatus(text, state = 'loading') {
 
 async function initializeCamera() {
     try {
-        updateCameraStatus('Requesting camera access...', 'loading');
+        // If we already have camera permission and stream, just restart it
+        if (AppState.permissions.camera && AppState.camera.stream) {
+            Elements.cameraStream.srcObject = AppState.camera.stream;
+            AppState.camera.isActive = true;
 
-        // Request camera permission with constraints
-        const constraints = {
-            video: {
-                facingMode: { ideal: 'environment' }, // Back camera on mobile
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            },
-            audio: false
-        };
+            await new Promise(resolve => {
+                Elements.cameraStream.onloadedmetadata = () => {
+                    Elements.cameraStream.play();
+                    resolve();
+                };
+            });
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            updateCameraStatus('Camera ready', 'success');
+            Elements.captureBtn.disabled = false;
+            return true;
+        }
 
-        AppState.camera.stream = stream;
+        // Request permissions if not already granted
+        const { cameraStream, locationResult } = await requestPermissions();
+
+        AppState.camera.stream = cameraStream;
         AppState.camera.isActive = true;
 
-        Elements.cameraStream.srcObject = stream;
+        Elements.cameraStream.srcObject = cameraStream;
 
         // Wait for video to be ready
         await new Promise(resolve => {
@@ -119,25 +225,20 @@ async function initializeCamera() {
             };
         });
 
-        updateCameraStatus('Camera ready', 'success');
+        // Update status based on what we have
+        if (AppState.permissions.location) {
+            updateCameraStatus('All permissions granted', 'success');
+        } else {
+            updateCameraStatus('Camera ready (location unavailable)', 'success');
+        }
+
         Elements.captureBtn.disabled = false;
 
         return true;
     } catch (error) {
         console.error('Camera initialization error:', error);
-        updateCameraStatus('Camera unavailable', 'error');
+        updateCameraStatus('Permissions denied', 'error');
         Elements.captureBtn.disabled = true;
-
-        let errorMsg = 'Unable to access camera. ';
-        if (error.name === 'NotAllowedError') {
-            errorMsg += 'Please grant camera permissions in your browser settings.';
-        } else if (error.name === 'NotFoundError') {
-            errorMsg += 'No camera found on this device.';
-        } else {
-            errorMsg += 'Please ensure your device has a camera and try again.';
-        }
-
-        showError('Camera Access Denied', errorMsg);
         return false;
     }
 }
