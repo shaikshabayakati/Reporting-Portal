@@ -606,6 +606,167 @@ body {
     }
 }
 
+/* ==================== Processing Overlay ==================== */
+.processing-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.98);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-base);
+}
+
+.processing-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.processing-content {
+    text-align: center;
+    padding: var(--spacing-xl);
+    max-width: 400px;
+}
+
+/* Spinner Animation */
+.processing-spinner {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--spacing-xl);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 3px solid transparent;
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+}
+
+.spinner-ring:nth-child(2) {
+    width: 70%;
+    height: 70%;
+    border-top-color: var(--color-success);
+    animation-delay: 0.2s;
+    animation-duration: 1.8s;
+}
+
+.spinner-ring:nth-child(3) {
+    width: 40%;
+    height: 40%;
+    border-top-color: var(--color-warning);
+    animation-delay: 0.4s;
+    animation-duration: 2.1s;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.processing-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-text-primary);
+}
+
+.processing-message {
+    font-size: 0.9375rem;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xl);
+}
+
+/* Processing Steps */
+.processing-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    text-align: left;
+}
+
+.step-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    transition: all var(--transition-base);
+}
+
+.step-item.active {
+    border-color: var(--color-primary);
+    background: rgba(37, 99, 235, 0.1);
+}
+
+.step-item.completed {
+    border-color: var(--color-success);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.step-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    background: var(--color-surface-elevated);
+    border: 2px solid var(--color-border);
+    color: var(--color-text-tertiary);
+}
+
+.step-item.active .step-icon {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: white;
+}
+
+.step-item.completed .step-icon {
+    border-color: var(--color-success);
+    background: var(--color-success);
+    color: white;
+}
+
+.step-icon.loading {
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    animation: spin 1s linear infinite;
+}
+
+.step-text {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.step-item.active .step-text {
+    color: var(--color-text-primary);
+}
+
+.step-item.completed .step-text {
+    color: var(--color-success);
+}
+
 /* ==================== PWA Safe Areas ==================== */
 @supports (padding-top: env(safe-area-inset-top)) {
     .header {

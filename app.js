@@ -51,7 +51,15 @@ const Elements = {
     // Error modal
     errorTitle: document.getElementById('errorTitle'),
     errorMessage: document.getElementById('errorMessage'),
-    closeErrorBtn: document.getElementById('closeErrorBtn')
+    closeErrorBtn: document.getElementById('closeErrorBtn'),
+
+    // Processing overlay
+    processingOverlay: document.getElementById('processingOverlay'),
+    processingTitle: document.getElementById('processingTitle'),
+    processingMessage: document.getElementById('processingMessage'),
+    stepCapture: document.getElementById('step-capture'),
+    stepLocation: document.getElementById('step-location'),
+    stepVerify: document.getElementById('step-verify')
 };
 
 // ==================== View Management ====================
@@ -83,6 +91,43 @@ function showError(title, message) {
 
 function hideError() {
     Elements.errorModal.classList.remove('active');
+}
+
+// ==================== Processing Overlay Management ====================
+function showProcessing() {
+    Elements.processingOverlay.classList.add('active');
+
+    // Reset all steps to initial state
+    Elements.stepCapture.classList.remove('active', 'completed');
+    Elements.stepLocation.classList.remove('active', 'completed');
+    Elements.stepVerify.classList.remove('active', 'completed');
+
+    // Mark capture as completed immediately
+    Elements.stepCapture.classList.add('completed');
+    Elements.stepCapture.querySelector('.step-icon').textContent = '✓';
+
+    // Set location as active
+    Elements.stepLocation.classList.add('active');
+}
+
+function hideProcessing() {
+    Elements.processingOverlay.classList.remove('active');
+}
+
+function updateProcessingStep(step, status) {
+    const stepElement = Elements[`step${step.charAt(0).toUpperCase()}${step.slice(1)}`];
+
+    if (status === 'active') {
+        stepElement.classList.add('active');
+        stepElement.classList.remove('completed');
+        stepElement.querySelector('.step-icon').classList.add('loading');
+        stepElement.querySelector('.step-icon').textContent = '';
+    } else if (status === 'completed') {
+        stepElement.classList.remove('active');
+        stepElement.classList.add('completed');
+        stepElement.querySelector('.step-icon').classList.remove('loading');
+        stepElement.querySelector('.step-icon').textContent = '✓';
+    }
 }
 
 // ==================== Camera Management ====================
@@ -263,6 +308,9 @@ async function capturePhoto() {
         // Disable capture button during processing
         Elements.captureBtn.disabled = true;
 
+        // Show processing overlay immediately
+        showProcessing();
+
         const video = Elements.cameraStream;
         const canvas = Elements.captureCanvas;
 
@@ -285,8 +333,28 @@ async function capturePhoto() {
         // Capture timestamp
         const timestamp = new Date();
 
-        // Capture location
+        console.log('Image captured, now capturing location...');
+
+        // Capture location - this is where the delay happens on mobile
         const location = await captureLocation();
+
+        // Mark location step as completed
+        updateProcessingStep('location', 'completed');
+
+        console.log('Location captured, now verifying with CNN...');
+
+        // Mark verify step as active
+        updateProcessingStep('verify', 'active');
+        Elements.processingMessage.textContent = 'Verifying pothole detection...';
+
+        // Simulate CNN verification (replace with actual CNN when ready)
+        // Add a small delay to show the verification step
+        await new Promise(resolve => setTimeout(resolve, 800));
+        simulateCNNVerification();
+
+        // Mark verify step as completed
+        updateProcessingStep('verify', 'completed');
+        Elements.processingMessage.textContent = 'Processing complete!';
 
         // Store capture data
         AppState.capture = {
@@ -302,15 +370,24 @@ async function capturePhoto() {
         // Update timestamp display
         Elements.timestampDisplay.textContent = formatTimestamp(timestamp);
 
-        // Simulate CNN verification (placeholder)
-        simulateCNNVerification();
+        console.log('All processing complete, showing preview...');
+
+        // Small delay to show all steps completed
+        await new Promise(resolve => setTimeout(resolve, 400));
+
+        // Hide processing overlay
+        hideProcessing();
 
         // Stop camera and switch to preview
         stopCamera();
         switchView('preview');
 
+        // Re-enable capture button
+        Elements.captureBtn.disabled = false;
+
     } catch (error) {
         console.error('Photo capture error:', error);
+        hideProcessing();
         showError('Capture Failed', 'Unable to capture photo. Please try again.');
         Elements.captureBtn.disabled = false;
     }

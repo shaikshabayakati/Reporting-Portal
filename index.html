@@ -129,6 +129,33 @@
         </div>
     </div>
 
+    <!-- Processing Overlay -->
+    <div id="processingOverlay" class="processing-overlay">
+        <div class="processing-content">
+            <div class="processing-spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+            </div>
+            <h3 class="processing-title" id="processingTitle">Processing Image</h3>
+            <p class="processing-message" id="processingMessage">Capturing location data...</p>
+            <div class="processing-steps">
+                <div class="step-item" id="step-capture">
+                    <div class="step-icon">✓</div>
+                    <span class="step-text">Image captured</span>
+                </div>
+                <div class="step-item" id="step-location">
+                    <div class="step-icon loading"></div>
+                    <span class="step-text">Getting location...</span>
+                </div>
+                <div class="step-item" id="step-verify">
+                    <div class="step-icon"></div>
+                    <span class="step-text">Verifying image...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Error Modal -->
     <div id="errorModal" class="modal">
         <div class="modal-content">
