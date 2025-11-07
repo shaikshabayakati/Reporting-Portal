@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a1a">
+    <title>Citizen Reporting Portal</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Camera View (Default State) -->
+    <div id="cameraView" class="view active">
+        <div class="header">
+            <div class="header-content">
+                <h1 class="app-title">Citizen Reporting Portal</h1>
+                <p class="app-subtitle">Infrastructure Issue Documentation</p>
+            </div>
+        </div>
+
+        <div class="camera-container">
+            <video id="cameraStream" autoplay playsinline></video>
+            <canvas id="captureCanvas" style="display: none;"></canvas>
+
+            <!-- Camera Overlay -->
+            <div class="camera-overlay">
+                <div class="scan-frame"></div>
+            </div>
+
+            <!-- Camera Status -->
+            <div class="camera-status" id="cameraStatus">
+                <div class="status-indicator loading"></div>
+                <span class="status-text">Initializing camera...</span>
+            </div>
+        </div>
+
+        <!-- Capture Controls -->
+        <div class="controls">
+            <div class="capture-zone">
+                <button id="captureBtn" class="capture-button" disabled>
+                    <div class="capture-ring"></div>
+                    <div class="capture-inner"></div>
+                </button>
+            </div>
+            <div class="controls-info">
+                <p class="instruction-text">Position pothole within frame and capture</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview & Verify View -->
+    <div id="previewView" class="view">
+        <div class="header">
+            <button id="backBtn" class="icon-button">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <div class="header-content">
+                <h1 class="app-title">Review Capture</h1>
+            </div>
+        </div>
+
+        <div class="preview-container">
+            <img id="capturedImage" class="captured-image" alt="Captured pothole">
+
+            <!-- Verification Status (Placeholder for CNN) -->
+            <div class="verification-panel" id="verificationPanel">
+                <div class="verification-content">
+                    <div class="verification-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="verification-title">Image Verified</h3>
+                    <p class="verification-subtitle">AI Classification: Pothole Detected</p>
+                    <div class="confidence-badge">
+                        <span class="confidence-label">Confidence:</span>
+                        <span class="confidence-value" id="confidenceScore">95%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metadata Display -->
+            <div class="metadata-panel">
+                <h4 class="metadata-title">Capture Information</h4>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Location</span>
+                        <span class="metadata-value" id="locationDisplay">Acquiring...</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Coordinates</span>
+                        <span class="metadata-value" id="coordinatesDisplay">--</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Timestamp</span>
+                        <span class="metadata-value" id="timestampDisplay">--</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Accuracy</span>
+                        <span class="metadata-value" id="accuracyDisplay">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Controls -->
+        <div class="submit-controls">
+            <button id="retakeBtn" class="secondary-button">Retake Photo</button>
+            <button id="submitBtn" class="primary-button">Submit Report</button>
+        </div>
+    </div>
+
+    <!-- Success View -->
+    <div id="successView" class="view">
+        <div class="success-container">
+            <div class="success-icon">
+                <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <h2 class="success-title">Report Submitted</h2>
+            <p class="success-message">Your infrastructure report has been successfully logged. The relevant authorities will be notified.</p>
+            <div class="report-id">
+                <span class="report-id-label">Report ID:</span>
+                <span class="report-id-value" id="reportId">--</span>
+            </div>
+            <button id="newReportBtn" class="primary-button">Report Another Issue</button>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="errorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-icon error">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M15 9l-6 6m0-6l6 6"/>
+                </svg>
+            </div>
+            <h3 class="modal-title" id="errorTitle">Error</h3>
+            <p class="modal-message" id="errorMessage">An error occurred.</p>
+            <button id="closeErrorBtn" class="primary-button">Understood</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
