@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#1a1a1a">
     <title>Citizen Reporting Portal</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- ONNX Runtime Web -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
     <!-- Camera View (Default State) -->
@@ -63,16 +65,16 @@
         <div class="preview-container">
             <img id="capturedImage" class="captured-image" alt="Captured pothole">
 
-            <!-- Verification Status (Placeholder for CNN) -->
+            <!-- Verification Status -->
             <div class="verification-panel" id="verificationPanel">
                 <div class="verification-content">
-                    <div class="verification-icon">
+                    <div class="verification-icon" id="verificationIcon">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                     </div>
-                    <h3 class="verification-title">Image Verified</h3>
-                    <p class="verification-subtitle">AI Classification: Pothole Detected</p>
+                    <h3 class="verification-title" id="verificationTitle">Image Verified</h3>
+                    <p class="verification-subtitle" id="verificationSubtitle">AI Classification: Pothole Detected</p>
                     <div class="confidence-badge">
                         <span class="confidence-label">Confidence:</span>
                         <span class="confidence-value" id="confidenceScore">95%</span>

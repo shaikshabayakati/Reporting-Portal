@@ -12,9 +12,16 @@ const AppState = {
         imageData: null,
         blob: null,
         timestamp: null,
-        location: null
+        location: null,
+        isPothole: false,
+        confidence: 0
     },
-    currentView: 'camera'
+    currentView: 'camera',
+    model: {
+        session: null,
+        isLoading: false,
+        isLoaded: false
+    }
 };
 
 // ==================== DOM Elements ====================
@@ -42,6 +49,12 @@ const Elements = {
     coordinatesDisplay: document.getElementById('coordinatesDisplay'),
     timestampDisplay: document.getElementById('timestampDisplay'),
     accuracyDisplay: document.getElementById('accuracyDisplay'),
+    
+    // Verification panel
+    verificationPanel: document.getElementById('verificationPanel'),
+    verificationIcon: document.getElementById('verificationIcon'),
+    verificationTitle: document.getElementById('verificationTitle'),
+    verificationSubtitle: document.getElementById('verificationSubtitle'),
     confidenceScore: document.getElementById('confidenceScore'),
 
     // Success
@@ -79,6 +92,153 @@ function switchView(viewName) {
     if (viewMap[viewName]) {
         viewMap[viewName].classList.add('active');
         AppState.currentView = viewName;
+    }
+}
+
+// ==================== ONNX Model Management ====================
+async function loadONNXModel() {
+    if (AppState.model.isLoaded || AppState.model.isLoading) {
+        return;
+    }
+
+    try {
+        AppState.model.isLoading = true;
+        console.log('Loading ONNX model (client-side)...');
+        
+        // Load model directly - works in browser without server!
+        const session = await ort.InferenceSession.create('pothole_classifier_mobilenetv3.onnx', {
+            executionProviders: ['wasm'],
+            graphOptimizationLevel: 'all'
+        });
+        
+        AppState.model.session = session;
+        AppState.model.isLoaded = true;
+        
+        console.log('✓ ONNX model loaded successfully!');
+        console.log('✓ Input names:', session.inputNames);
+        console.log('✓ Output names:', session.outputNames);
+        console.log('✓ Running 100% client-side - no server needed!');
+        
+    } catch (error) {
+        console.error('❌ Failed to load ONNX model:', error);
+        console.error('Error details:', error.message);
+        
+        if (error.message.includes('external data')) {
+            showError(
+                'Model Format Error', 
+                'Model has external data. Run convert_to_single_file.py to fix this. Check console for details.'
+            );
+        } else {
+            showError(
+                'Model Load Error', 
+                'Failed to load AI model: ' + error.message
+            );
+        }
+    } finally {
+        AppState.model.isLoading = false;
+    }
+}
+
+async function preprocessImage(canvas) {
+    // MobileNetV3 typically expects 224x224 input
+    const targetSize = 224;
+    
+    // Create a temporary canvas for resizing
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = targetSize;
+    tempCanvas.height = targetSize;
+    const ctx = tempCanvas.getContext('2d');
+    
+    // Draw and resize the image
+    ctx.drawImage(canvas, 0, 0, targetSize, targetSize);
+    
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, targetSize, targetSize);
+    const { data } = imageData;
+    
+    // Convert to float32 array and normalize
+    // Assuming MobileNetV3 expects input in range [0, 1] with shape [1, 3, 224, 224]
+    const float32Data = new Float32Array(1 * 3 * targetSize * targetSize);
+    
+    // Convert from RGBA to RGB and normalize to [0, 1]
+    for (let i = 0; i < targetSize * targetSize; i++) {
+        const pixelIndex = i * 4;
+        
+        // R channel
+        float32Data[i] = data[pixelIndex] / 255.0;
+        // G channel
+        float32Data[targetSize * targetSize + i] = data[pixelIndex + 1] / 255.0;
+        // B channel
+        float32Data[targetSize * targetSize * 2 + i] = data[pixelIndex + 2] / 255.0;
+    }
+    
+    return float32Data;
+}
+
+async function classifyImage(canvas) {
+    if (!AppState.model.isLoaded) {
+        console.error('Model not loaded');
+        return { isPothole: false, confidence: 0 };
+    }
+
+    try {
+        console.log('Preprocessing image...');
+        const inputData = await preprocessImage(canvas);
+        
+        // Create tensor
+        const tensor = new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+        
+        console.log('Running inference...');
+        const feeds = {};
+        feeds[AppState.model.session.inputNames[0]] = tensor;
+        
+        // Run inference
+        const results = await AppState.model.session.run(feeds);
+        const output = results[AppState.model.session.outputNames[0]];
+        
+        console.log('Raw output:', output.data);
+        
+        // Assuming binary classification: [not_pothole_score, pothole_score]
+        // or single output with sigmoid
+        let potholeConfidence = 0;
+        
+        if (output.data.length === 2) {
+            // Binary classification with two outputs
+            const notPotholeScore = output.data[0];
+            const potholeScore = output.data[1];
+            
+            // Apply softmax
+            const expSum = Math.exp(notPotholeScore) + Math.exp(potholeScore);
+            potholeConfidence = Math.exp(potholeScore) / expSum;
+        } else if (output.data.length === 1) {
+            // Single output (sigmoid)
+            potholeConfidence = output.data[0];
+        } else {
+            // Multiple class output - assume pothole is class 1
+            const scores = Array.from(output.data);
+            const maxScore = Math.max(...scores);
+            const expScores = scores.map(s => Math.exp(s - maxScore));
+            const sumExp = expScores.reduce((a, b) => a + b, 0);
+            const softmax = expScores.map(s => s / sumExp);
+            
+            // Assume pothole is index 1
+            potholeConfidence = softmax[1] || softmax[0];
+        }
+        
+        console.log('Pothole confidence:', potholeConfidence);
+        
+        // Threshold for classification (adjust as needed)
+        const threshold = 0.5;
+        const isPothole = potholeConfidence >= threshold;
+        
+        return {
+            isPothole,
+            confidence: potholeConfidence
+        };
+        
+    } catch (error) {
+        console.error('Classification error:', error);
+        return { isPothole: false, confidence: 0 };
     }
 }
 
@@ -347,10 +507,10 @@ async function capturePhoto() {
         updateProcessingStep('verify', 'active');
         Elements.processingMessage.textContent = 'Verifying pothole detection...';
 
-        // Simulate CNN verification (replace with actual CNN when ready)
-        // Add a small delay to show the verification step
-        await new Promise(resolve => setTimeout(resolve, 800));
-        simulateCNNVerification();
+        // Run ONNX model classification
+        const classification = await classifyImage(canvas);
+        
+        console.log('Classification result:', classification);
 
         // Mark verify step as completed
         updateProcessingStep('verify', 'completed');
@@ -361,7 +521,9 @@ async function capturePhoto() {
             imageData,
             blob,
             timestamp,
-            location
+            location,
+            isPothole: classification.isPothole,
+            confidence: classification.confidence
         };
 
         // Update preview
@@ -369,6 +531,9 @@ async function capturePhoto() {
 
         // Update timestamp display
         Elements.timestampDisplay.textContent = formatTimestamp(timestamp);
+        
+        // Update verification UI based on classification
+        updateVerificationUI(classification.isPothole, classification.confidence);
 
         console.log('All processing complete, showing preview...');
 
@@ -393,16 +558,57 @@ async function capturePhoto() {
     }
 }
 
+// ==================== Update Verification UI ====================
+function updateVerificationUI(isPothole, confidence) {
+    const confidencePercent = Math.round(confidence * 100);
+    
+    Elements.confidenceScore.textContent = `${confidencePercent}%`;
+    
+    if (isPothole) {
+        // Pothole detected - allow submission
+        Elements.verificationPanel.classList.remove('rejected');
+        Elements.verificationPanel.classList.add('verified');
+        
+        Elements.verificationTitle.textContent = 'Image Verified';
+        Elements.verificationSubtitle.textContent = 'AI Classification: Pothole Detected';
+        
+        Elements.verificationIcon.innerHTML = `
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        `;
+        
+        // Enable submit button
+        Elements.submitBtn.disabled = false;
+        Elements.submitBtn.textContent = 'Submit Report';
+        
+    } else {
+        // Not a pothole - disable submission
+        Elements.verificationPanel.classList.remove('verified');
+        Elements.verificationPanel.classList.add('rejected');
+        
+        Elements.verificationTitle.textContent = 'Image Not Verified';
+        Elements.verificationSubtitle.textContent = 'AI Classification: No Pothole Detected';
+        
+        Elements.verificationIcon.innerHTML = `
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M15 9l-6 6m0-6l6 6"/>
+            </svg>
+        `;
+        
+        // Disable submit button
+        Elements.submitBtn.disabled = true;
+        Elements.submitBtn.textContent = 'Cannot Submit - No Pothole Detected';
+    }
+}
+
 // ==================== CNN Simulation (Placeholder) ====================
 function simulateCNNVerification() {
-    // This is a placeholder for the actual CNN integration
-    // In production, this would analyze the image and return real results
-
+    // This function is now replaced by actual ONNX inference
+    // Kept for backward compatibility but not used
     const confidence = 85 + Math.random() * 10; // 85-95%
     Elements.confidenceScore.textContent = `${Math.round(confidence)}%`;
-
-    // For now, always show verified
-    // When CNN is integrated, this would show actual classification results
 }
 
 // ==================== Utility Functions ====================
@@ -427,6 +633,12 @@ function generateReportId() {
 
 // ==================== Report Submission ====================
 async function submitReport() {
+    // Double-check that the image is verified as a pothole
+    if (!AppState.capture.isPothole) {
+        showError('Submission Blocked', 'Only verified pothole images can be submitted. Please retake a photo of a pothole.');
+        return;
+    }
+
     try {
         Elements.submitBtn.disabled = true;
         Elements.submitBtn.textContent = 'Submitting...';
@@ -445,6 +657,8 @@ async function submitReport() {
         // formData.append('latitude', AppState.capture.location.latitude);
         // formData.append('longitude', AppState.capture.location.longitude);
         // formData.append('accuracy', AppState.capture.location.accuracy);
+        // formData.append('confidence', AppState.capture.confidence);
+        // formData.append('isPothole', AppState.capture.isPothole);
         //
         // const response = await fetch('/api/reports', {
         //     method: 'POST',
@@ -504,6 +718,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
         return;
     }
+
+    // Load ONNX model in the background
+    loadONNXModel();
 
     // Initialize camera on load
     await initializeCamera();
