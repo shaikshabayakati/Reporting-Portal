@@ -75,17 +75,65 @@ function switchView(viewName) {
 }
 
 // ==================== Error Handling ====================
-function showError(title, message) {
+let errorCallback = null;
+
+function showError(title, message, callback = null) {
     Elements.errorTitle.textContent = title;
     Elements.errorMessage.textContent = message;
     Elements.errorModal.classList.add('active');
+    errorCallback = callback;
 }
 
 function hideError() {
     Elements.errorModal.classList.remove('active');
+    if (errorCallback) {
+        errorCallback();
+        errorCallback = null;
+    }
 }
 
 // ==================== Permission Management ====================
+async function requestLocationPermission() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocation not supported by your browser'));
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                AppState.permissions.location = true;
+                resolve(position);
+            },
+            (error) => {
+                console.error('Location permission error:', error);
+                let errorMsg = '';
+                
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMsg = 'Location access is REQUIRED to use this app. Please allow location access when prompted.';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMsg = 'Location information is unavailable. Please enable location services on your device.';
+                        break;
+                    case error.TIMEOUT:
+                        errorMsg = 'Location request timed out. Please try again.';
+                        break;
+                    default:
+                        errorMsg = 'An unknown error occurred while requesting location.';
+                }
+                
+                reject(new Error(errorMsg));
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            }
+        );
+    });
+}
+
 async function requestPermissions() {
     try {
         updateCameraStatus('Requesting permissions...', 'loading');
@@ -96,64 +144,53 @@ async function requestPermissions() {
             throw new Error('This app requires HTTPS to access camera and location.');
         }
 
-        // Request both camera and location permissions together
-        const permissionPromises = [];
-
-        // 1. Request Camera Permission
-        const cameraPromise = (async () => {
+        // Request location permission FIRST and make it mandatory
+        let locationResult = null;
+        while (!AppState.permissions.location) {
             try {
-                const constraints = {
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    },
-                    audio: false
-                };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                AppState.permissions.camera = true;
-                return stream;
+                updateCameraStatus('Location permission required...', 'loading');
+                locationResult = await requestLocationPermission();
+                // If we get here, location permission was granted
+                break;
             } catch (error) {
-                console.error('Camera permission error:', error);
-                throw error;
-            }
-        })();
-
-        permissionPromises.push(cameraPromise);
-
-        // 2. Request Location Permission (pre-request)
-        const locationPromise = (async () => {
-            try {
-                if (!navigator.geolocation) {
-                    throw new Error('Geolocation not supported');
-                }
-
-                // Request location permission upfront
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(
-                        resolve,
-                        reject,
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 15000,
-                            maximumAge: 0
+                console.error('Location permission denied:', error);
+                
+                // Show error and ask again
+                await new Promise((resolve) => {
+                    showError(
+                        'Location Permission Required',
+                        error.message + ' The app cannot function without location access. Click OK to try again.',
+                        () => {
+                            hideError();
+                            resolve();
                         }
                     );
                 });
-
-                AppState.permissions.location = true;
-                return position;
-            } catch (error) {
-                console.error('Location permission error:', error);
-                // Don't throw - location is optional
-                return null;
+                
+                // Loop will continue and ask again
             }
-        })();
+        }
 
-        permissionPromises.push(locationPromise);
+        // Only proceed to camera after location is granted
+        updateCameraStatus('Requesting camera access...', 'loading');
 
-        // Wait for both permissions
-        const [cameraStream, locationResult] = await Promise.all(permissionPromises);
+        // Request Camera Permission
+        let cameraStream = null;
+        try {
+            const constraints = {
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: false
+            };
+            cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            AppState.permissions.camera = true;
+        } catch (error) {
+            console.error('Camera permission error:', error);
+            throw error;
+        }
 
         return { cameraStream, locationResult };
 
@@ -225,12 +262,8 @@ async function initializeCamera() {
             };
         });
 
-        // Update status based on what we have
-        if (AppState.permissions.location) {
-            updateCameraStatus('All permissions granted', 'success');
-        } else {
-            updateCameraStatus('Camera ready (location unavailable)', 'success');
-        }
+        // Both permissions are now mandatory, so we always have location
+        updateCameraStatus('All permissions granted', 'success');
 
         Elements.captureBtn.disabled = false;
 
