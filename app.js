@@ -75,147 +75,14 @@ function switchView(viewName) {
 }
 
 // ==================== Error Handling ====================
-let errorCallback = null;
-
-function showError(title, message, callback = null) {
+function showError(title, message) {
     Elements.errorTitle.textContent = title;
     Elements.errorMessage.textContent = message;
     Elements.errorModal.classList.add('active');
-    errorCallback = callback;
 }
 
 function hideError() {
     Elements.errorModal.classList.remove('active');
-    if (errorCallback) {
-        errorCallback();
-        errorCallback = null;
-    }
-}
-
-// ==================== Permission Management ====================
-async function requestLocationPermission() {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error('Geolocation not supported by your browser'));
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                AppState.permissions.location = true;
-                resolve(position);
-            },
-            (error) => {
-                console.error('Location permission error:', error);
-                let errorMsg = '';
-                
-                switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        errorMsg = 'Location access is REQUIRED to use this app. Please allow location access when prompted.';
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        errorMsg = 'Location information is unavailable. Please enable location services on your device.';
-                        break;
-                    case error.TIMEOUT:
-                        errorMsg = 'Location request timed out. Please try again.';
-                        break;
-                    default:
-                        errorMsg = 'An unknown error occurred while requesting location.';
-                }
-                
-                reject(new Error(errorMsg));
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 0
-            }
-        );
-    });
-}
-
-async function requestPermissions() {
-    try {
-        updateCameraStatus('Requesting permissions...', 'loading');
-
-        // Check if we're on HTTPS or localhost
-        const isSecureContext = window.isSecureContext;
-        if (!isSecureContext) {
-            throw new Error('This app requires HTTPS to access camera and location.');
-        }
-
-        // Request location permission FIRST and make it mandatory
-        let locationResult = null;
-        while (!AppState.permissions.location) {
-            try {
-                updateCameraStatus('Location permission required...', 'loading');
-                locationResult = await requestLocationPermission();
-                // If we get here, location permission was granted
-                break;
-            } catch (error) {
-                console.error('Location permission denied:', error);
-                
-                // Show error and ask again
-                await new Promise((resolve) => {
-                    showError(
-                        'Location Permission Required',
-                        error.message + ' The app cannot function without location access. Click OK to try again.',
-                        () => {
-                            hideError();
-                            resolve();
-                        }
-                    );
-                });
-                
-                // Loop will continue and ask again
-            }
-        }
-
-        // Only proceed to camera after location is granted
-        updateCameraStatus('Requesting camera access...', 'loading');
-
-        // Request Camera Permission
-        let cameraStream = null;
-        try {
-            const constraints = {
-                video: {
-                    facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                },
-                audio: false
-            };
-            cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-            AppState.permissions.camera = true;
-        } catch (error) {
-            console.error('Camera permission error:', error);
-            throw error;
-        }
-
-        return { cameraStream, locationResult };
-
-    } catch (error) {
-        console.error('Permission request error:', error);
-
-        let errorMsg = '';
-        let errorTitle = 'Permission Required';
-
-        if (error.message.includes('HTTPS')) {
-            errorTitle = 'Insecure Connection';
-            errorMsg = 'This app must be accessed via HTTPS. Please use your Vercel deployment URL (https://...) instead of HTTP.';
-        } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-            errorMsg = 'Camera access was denied. Please enable camera permissions in your browser settings and reload the page.';
-        } else if (error.name === 'NotFoundError') {
-            errorMsg = 'No camera found on this device. Please ensure your device has a camera.';
-        } else if (error.name === 'NotReadableError') {
-            errorMsg = 'Camera is already in use by another application. Please close other apps and try again.';
-        } else {
-            errorMsg = `Unable to access required permissions: ${error.message}. Please check your browser settings.`;
-        }
-
-        showError(errorTitle, errorMsg);
-        throw error;
-    }
 }
 
 // ==================== Camera Management ====================
@@ -229,30 +96,25 @@ function updateCameraStatus(text, state = 'loading') {
 
 async function initializeCamera() {
     try {
-        // If we already have camera permission and stream, just restart it
-        if (AppState.permissions.camera && AppState.camera.stream) {
-            Elements.cameraStream.srcObject = AppState.camera.stream;
-            AppState.camera.isActive = true;
+        updateCameraStatus('Requesting camera access...', 'loading');
 
-            await new Promise(resolve => {
-                Elements.cameraStream.onloadedmetadata = () => {
-                    Elements.cameraStream.play();
-                    resolve();
-                };
-            });
+        // Simple camera request with constraints
+        const constraints = {
+            video: {
+                facingMode: { ideal: 'environment' }, // Back camera on mobile
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
+            audio: false
+        };
 
-            updateCameraStatus('Camera ready', 'success');
-            Elements.captureBtn.disabled = false;
-            return true;
-        }
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
-        // Request permissions if not already granted
-        const { cameraStream, locationResult } = await requestPermissions();
-
-        AppState.camera.stream = cameraStream;
+        AppState.camera.stream = stream;
         AppState.camera.isActive = true;
+        AppState.permissions.camera = true;
 
-        Elements.cameraStream.srcObject = cameraStream;
+        Elements.cameraStream.srcObject = stream;
 
         // Wait for video to be ready
         await new Promise(resolve => {
@@ -262,16 +124,27 @@ async function initializeCamera() {
             };
         });
 
-        // Both permissions are now mandatory, so we always have location
-        updateCameraStatus('All permissions granted', 'success');
-
+        updateCameraStatus('Camera ready', 'success');
         Elements.captureBtn.disabled = false;
 
         return true;
     } catch (error) {
         console.error('Camera initialization error:', error);
-        updateCameraStatus('Permissions denied', 'error');
+        updateCameraStatus('Camera unavailable', 'error');
         Elements.captureBtn.disabled = true;
+
+        let errorMsg = 'Unable to access camera. ';
+        if (error.name === 'NotAllowedError') {
+            errorMsg += 'Please grant camera permissions in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+            errorMsg += 'No camera found on this device.';
+        } else if (error.name === 'NotReadableError') {
+            errorMsg += 'Camera is already in use. Please close other apps.';
+        } else {
+            errorMsg += 'Please ensure your device has a camera and try again.';
+        }
+
+        showError('Camera Access Denied', errorMsg);
         return false;
     }
 }
@@ -286,8 +159,15 @@ function stopCamera() {
 
 // ==================== Location Services ====================
 async function captureLocation() {
+    console.log('Starting location capture...');
+
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
+            console.error('Geolocation not supported');
+            Elements.locationDisplay.textContent = 'Location not supported';
+            Elements.coordinatesDisplay.textContent = 'Not available';
+            Elements.accuracyDisplay.textContent = 'N/A';
+
             resolve({
                 error: 'Geolocation not supported',
                 latitude: null,
@@ -297,18 +177,23 @@ async function captureLocation() {
             return;
         }
 
+        // Update UI to show we're working on it
         Elements.locationDisplay.textContent = 'Acquiring GPS...';
         Elements.coordinatesDisplay.textContent = 'Locating...';
         Elements.accuracyDisplay.textContent = 'Calculating...';
 
         const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
+            enableHighAccuracy: true,  // Use GPS if available
+            timeout: 20000,             // Increased timeout for mobile
+            maximumAge: 0               // Don't use cached position
         };
 
+        console.log('Requesting geolocation with options:', options);
+
         navigator.geolocation.getCurrentPosition(
-            async (position) => {
+            (position) => {
+                console.log('Location success:', position);
+
                 const latitude = position.coords.latitude;
                 const longitude = position.coords.longitude;
                 const accuracy = position.coords.accuracy;
@@ -317,9 +202,9 @@ async function captureLocation() {
                 Elements.coordinatesDisplay.textContent =
                     `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                 Elements.accuracyDisplay.textContent = `±${Math.round(accuracy)}m`;
-
-                // Reverse geocoding (placeholder - would need actual API)
                 Elements.locationDisplay.textContent = 'Location captured';
+
+                console.log('Location captured:', { latitude, longitude, accuracy });
 
                 resolve({
                     latitude,
@@ -330,7 +215,28 @@ async function captureLocation() {
             },
             (error) => {
                 console.error('Geolocation error:', error);
-                Elements.locationDisplay.textContent = 'Location unavailable';
+
+                let errorMsg = 'Location unavailable';
+
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMsg = 'Location permission denied';
+                        console.error('User denied location permission');
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMsg = 'Location unavailable';
+                        console.error('Location information unavailable');
+                        break;
+                    case error.TIMEOUT:
+                        errorMsg = 'Location request timeout';
+                        console.error('Location request timed out');
+                        break;
+                    default:
+                        errorMsg = 'Location error';
+                        console.error('Unknown location error');
+                }
+
+                Elements.locationDisplay.textContent = errorMsg;
                 Elements.coordinatesDisplay.textContent = 'Not available';
                 Elements.accuracyDisplay.textContent = 'N/A';
 
