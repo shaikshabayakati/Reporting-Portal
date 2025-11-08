@@ -234,7 +234,7 @@ async function classifyImage(canvas) {
         console.log('Pothole confidence:', potholeConfidence);
         
         // Threshold for classification (adjust as needed)
-        const threshold = 0.5;
+        const threshold = 0.9;
         const isPothole = potholeConfidence >= threshold;
         
         return {
