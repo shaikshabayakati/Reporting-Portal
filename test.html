@@ -76,7 +76,13 @@
                 
                 addLog('Loading ONNX model from: pothole_classifier_mobilenetv3.onnx');
                 const session = await ort.InferenceSession.create('pothole_classifier_mobilenetv3.onnx', {
-                    executionProviders: ['wasm']
+                    executionProviders: ['wasm'],
+                    externalData: [
+                        {
+                            data: 'pothole_classifier_mobilenetv3.onnx.data',
+                            path: 'pothole_classifier_mobilenetv3.onnx.data'
+                        }
+                    ]
                 });
                 
                 addLog('✓ Model loaded successfully!', 'success');

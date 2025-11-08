@@ -104,11 +104,17 @@ async function loadONNXModel() {
     try {
         AppState.model.isLoading = true;
         console.log('Loading ONNX model (client-side)...');
-        
-        // Load model directly - works in browser without server!
+
+        // Load model with external data support
         const session = await ort.InferenceSession.create('pothole_classifier_mobilenetv3.onnx', {
-            executionProviders: ['wasm'],
-            graphOptimizationLevel: 'all'
+            executionProviders: ['webgl', 'wasm'],
+            graphOptimizationLevel: 'all',
+            externalData: [
+                {
+                    data: 'pothole_classifier_mobilenetv3.onnx.data',
+                    path: 'pothole_classifier_mobilenetv3.onnx.data'
+                }
+            ]
         });
         
         AppState.model.session = session;
@@ -125,12 +131,12 @@ async function loadONNXModel() {
         
         if (error.message.includes('external data')) {
             showError(
-                'Model Format Error', 
-                'Model has external data. Run convert_to_single_file.py to fix this. Check console for details.'
+                'Model Format Error',
+                'Failed to load external data file. Make sure pothole_classifier_mobilenetv3.onnx.data is in the same folder. Check console for details.'
             );
         } else {
             showError(
-                'Model Load Error', 
+                'Model Load Error',
                 'Failed to load AI model: ' + error.message
             );
         }
@@ -241,6 +247,7 @@ async function classifyImage(canvas) {
         return { isPothole: false, confidence: 0 };
     }
 }
+
 
 // ==================== Error Handling ====================
 function showError(title, message) {
@@ -603,13 +610,7 @@ function updateVerificationUI(isPothole, confidence) {
     }
 }
 
-// ==================== CNN Simulation (Placeholder) ====================
-function simulateCNNVerification() {
-    // This function is now replaced by actual ONNX inference
-    // Kept for backward compatibility but not used
-    const confidence = 85 + Math.random() * 10; // 85-95%
-    Elements.confidenceScore.textContent = `${Math.round(confidence)}%`;
-}
+
 
 // ==================== Utility Functions ====================
 function formatTimestamp(date) {
